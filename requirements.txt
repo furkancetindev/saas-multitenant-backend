@@ -1,0 +1,42 @@
+# ---------------------------------------------------------------------------
+# Direct dependencies only. This file is hand-curated, not `pip freeze` output:
+# every line below is something this project imports on purpose. Transitive
+# dependencies are resolved by pip.
+#
+# Verified on Python 3.11, 3.13 and 3.14.4 against PostgreSQL 16:
+# a clean install of this file plus `pytest` gives 4 passed on all three.
+# ---------------------------------------------------------------------------
+
+# --- Web framework ---------------------------------------------------------
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+python-multipart==0.0.32        # required by OAuth2PasswordRequestForm (/login)
+
+# --- Database --------------------------------------------------------------
+SQLAlchemy==2.0.52
+psycopg2-binary==2.9.12
+alembic==1.19.1
+
+# --- Validation / settings -------------------------------------------------
+pydantic[email]==2.13.4         # [email] pulls email-validator, used by EmailStr
+pydantic-settings==2.15.0
+
+# --- Auth ------------------------------------------------------------------
+python-jose[cryptography]==3.5.0
+passlib[bcrypt]==1.7.4
+
+# bcrypt is pinned deliberately. passlib 1.7.4 reads bcrypt internals that were
+# removed in bcrypt 4.1+; with bcrypt 5.x every hash and verify call raises
+#   ValueError: password cannot be longer than 72 bytes
+# on a clean install. Until passlib ships a release that supports modern bcrypt,
+# this pin is what keeps a fresh `pip install -r requirements.txt` working.
+bcrypt==4.0.1
+
+# --- Rate limiting ---------------------------------------------------------
+slowapi==0.1.10
+
+# --- Tests -----------------------------------------------------------------
+# Kept in the same file on purpose: one install command, one green test run.
+# The isolation suite needs a real PostgreSQL database (see tests/conftest.py).
+pytest==9.1.1
+httpx==0.28.1
