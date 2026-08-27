@@ -103,6 +103,21 @@ RFC 6761 ayrılmış alan adlarını (`.test`, `.invalid`, `.localhost`) reddedi
 `admin@kuzey.test` ile kayıt **422** döner. `example.com` alt alan adları RFC 2606
 gereği asla gerçek bir adrese denk gelmez ve doğrulamadan geçer.
 
+## Tuzaklar (pahalıya mal oldu, bir daha düşme)
+
+- **`str(URL)` parolayı `***` yapar.** SQLAlchemy'de `str(url)`, f-string ve
+  `.format()` parolayı maskeler. Bağlantı dizgesi üretirken
+  `render_as_string(hide_password=False)` kullan. Maskeli hâli hâlâ ayrıştırılır,
+  hâlâ doğru veritabanını gösterir, ve `***` parolasıyla bağlanmaya çalışır —
+  hata çok sonra "password authentication failed" olarak çıkar ve doğru
+  kimlik bilgilerini suçlar. `tests/conftest.py` bunu artık bekçiyle yakalıyor.
+- **Test veritabanını `trust` ile kurma.** Parola doğrulanmayan bir ortam,
+  parolası bozuk kodu yeşil onaylar. Yukarıdaki hata tam olarak böyle gizlendi.
+  `pg_hba.conf` `scram-sha-256` olmalı.
+- **Aynı bilgiyi iki farklı yerden okuma.** `.env`'i elle regex'le ayrıştıran
+  ikinci bir okuyucu yazma; `dotenv_values` kullan — pydantic-settings'in
+  kullandığının aynısı. İki ayrıştırıcı yinelenen anahtarda farklı cevap verir.
+
 ## Testler
 
 - Testler **gerçek PostgreSQL** ister. SQLite yok: UUID sütunları, `gen_random_uuid()`
@@ -142,7 +157,10 @@ README, testler ve commit mesajları **İngilizce** — hedef kitle yabancı.
 
 `docs/DURUM.md` dosyasına bak. Yoksa proje henüz Faz 0'da demektir.
 
-26 Ağu 2026 itibarıyla: Faz 0, 1, 2 ve 3 bitti. `pytest` → 6 passed. Sırada Faz 4 (paketleme).
+26 Ağu 2026 itibarıyla: Faz 0, 1, 2, 3 bitti; Faz 4'ün README ve seed'i hazır.
+`pytest` → 6 passed (Furkan'ın makinesinde de). Sırada Faz 5 (canlıya alma).
+**README'deki demo görev kimliği `aaaa0000-0000-0000-0000-000000000001` sabittir** —
+`scripts/seed_demo.py` onu böyle yazar. Birini değiştirirsen diğerini de değiştir.
 
 **Testlerin dişi olduğu üç mutasyonla ölçüldü** — README'ye bu tablo girecek:
 elle `tenant_id` filtrelerini kaldır → hâlâ 6 passed (RLS koruyor) ·
