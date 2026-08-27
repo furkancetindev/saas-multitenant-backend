@@ -4,3 +4,7 @@ __pycache__/
 *.pyc
 .idea/
 .pytest_cache/
+
+# Working notes, not part of what this repository shows.
+CLAUDE.md
+docs/DURUM.md

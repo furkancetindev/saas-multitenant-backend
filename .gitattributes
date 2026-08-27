@@ -1,0 +1,5 @@
+# Line endings are normalised to LF inside the repository, and checked out in
+# the platform's native form. Without this, a repository written on Windows and
+# cloned on Linux differs byte for byte from the same repository written on
+# Linux, and every diff is full of whole-file changes that mean nothing.
+* text=auto

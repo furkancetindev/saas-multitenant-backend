@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
-from core.dependencies import get_db, get_tenant_db, get_current_user, require_role, get_user_service
+from core.dependencies import get_tenant_db, get_current_user, require_role, get_user_service
 from schemas.user import UserCreate, UserResponse, UserUpdate, UserPasswordUpdate
 from services.user_service import UserService
 from core.limiter import limiter

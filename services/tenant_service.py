@@ -1,3 +1,5 @@
+import logging
+
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from repositories.tenant_repository import TenantRepository
@@ -5,6 +7,8 @@ from repositories.user_repository import UserRepository
 from schemas.tenant import CompanyRegister
 from models.domain import Tenant, User
 from core.security import get_password_hash
+
+logger = logging.getLogger(__name__)
 
 
 class TenantService:
@@ -42,9 +46,17 @@ class TenantService:
         except IntegrityError:
             self.db.rollback()  # Hata çıkarsa tüm işlemleri geri al
             raise ValueError("Bu e-posta adresi zaten kullanılıyor.")
-        except Exception as e:
+        except Exception as hata:
             self.db.rollback()
-            raise ValueError("Kayıt işlemi sırasında beklenmeyen bir hata oluştu.")
+            # İstemciye ayrıntı vermiyoruz — kayıt formuna veritabanı hatası
+            # dökmek hem çirkin hem sızıntı. Ama sunucu tarafında da kaybetmiyoruz:
+            # `from hata` zinciri koruyor, logger tam traceback'i yazıyor.
+            # Öncesinde bu blok hatayı tamamen yutuyordu ve kayıt bir gün
+            # bozulduğunda elde tek satır teşhis bilgisi kalmıyordu.
+            logger.exception("Şirket kaydı başarısız: %s", data.company_name)
+            raise ValueError(
+                "Kayıt işlemi sırasında beklenmeyen bir hata oluştu."
+            ) from hata
 
     def get_tenant_by_id(self, tenant_id):
         return self.repository.get_tenant_by_id(tenant_id)

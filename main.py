@@ -79,7 +79,8 @@ def health_check():
         db.execute(text("SELECT 1"))
         db.close()
         return {"status": "ok", "database": "healthy"}
-    except Exception as e:
+    except Exception:
+        logger.exception("Sağlık kontrolü başarısız")
         return JSONResponse(
             status_code=503,
             content={"status": "error", "detail": "Database connection failed"}

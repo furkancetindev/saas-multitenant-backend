@@ -14,7 +14,9 @@ from core.config import settings
 from database import Base
 
 # 3) Alembic'in tabloları algılaması için modelleri buraya import ETMELİYİZ!
-from models.domain import Tenant, User, Task
+from models.domain import Tenant, User, Task  # noqa: F401
+# Kullanılmıyor görünürler ama şart: import edilmedikleri sürece
+# Base.metadata boş kalır ve autogenerate tabloları göremez.
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
