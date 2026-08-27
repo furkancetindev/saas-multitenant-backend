@@ -89,7 +89,9 @@ Password for all three: `Parola123`
 
 Requires PostgreSQL 13 or newer (`gen_random_uuid()` is built in from 13; on
 older versions enable the `pgcrypto` extension) and Python 3.11+. Verified on
-Python 3.11, 3.13 and 3.14 against PostgreSQL 16.
+Python 3.11, 3.13 and 3.14, against PostgreSQL 16 locally and PostgreSQL 18 on
+Neon. The migrations, the policy and the `set_config` mechanism needed no change
+between the two.
 
 ```bash
 git clone <repo> && cd saas_backend
@@ -128,7 +130,8 @@ The order matters, because each step needs different privileges:
 alembic upgrade head            # schema owner — creates tables and the RLS policy
 python scripts/setup_db_role.py # creates the restricted role the app connects as
 python scripts/seed_demo.py     # optional: the two demo companies
-python scripts/check_db_setup.py   # verify before pointing traffic at it
+python scripts/check_db_setup.py   # verify the database before pointing traffic at it
+python scripts/smoke_test.py       # verify the application on top of it
 ```
 
 Environment variables:
@@ -160,6 +163,22 @@ role it produced cannot bypass the policies. It exits non-zero if it can.
 Run `check_db_setup.py` against production after every deploy. It is the
 difference between believing the isolation is on and knowing it.
 
+Then run `smoke_test.py`, which checks the other half. `check_db_setup.py`
+inspects the database; `smoke_test.py` drives the running application through
+the *Try it yourself* scenario over HTTP — log in as both companies, fetch the
+same task ID with each, compare the responses. A database can be configured
+perfectly while the application forgets to tell it which tenant is asking, and
+only a real request through the real stack shows that.
+
+```bash
+python scripts/smoke_test.py                              # in-process, against .env
+python scripts/smoke_test.py https://your-app.example.com # against a deployment
+```
+
+It asserts one thing a human comparing two curl outputs would not: that the 404
+for another tenant's task is *byte-identical* to the 404 for an ID that never
+existed. Two 404s differing by a single character are still an existence oracle.
+
 **If you keep a free-tier service warm with an external pinger, point it at `/`
 and not at `/healthz`.** `/healthz` opens a database connection by design —
 that is what makes it a useful health check. Aimed at a scale-to-zero Postgres
@@ -167,6 +186,18 @@ every few minutes, it also stops the database ever going idle, and turns a demo
 nobody is using into a metered one. On Neon's free plan the difference is a
 compute that lasts the month and one that suspends around day sixteen. `/`
 returns a static response and touches nothing.
+
+The pinger's *schedule* needs the same arithmetic. Render's free tier grants 750
+instance hours per month; a month is about 730 of them. A ping that keeps one
+service awake around the clock therefore spends very nearly the whole allowance
+and leaves no room for a second service. Pinging only during the hours somebody
+might actually open the link — sixteen a day is roughly 480 hours — keeps the
+margin. Outside that window the first request pays the cold start, about a
+minute on the free tier.
+
+`.python-version` pins the interpreter. Platforms move their default Python
+forward, and a demo nobody is watching should not be rebuilt on a version this
+was never tested against.
 
 ---
 
@@ -304,7 +335,7 @@ repositories/ database access — every query filtered by tenant_id
 models/       SQLAlchemy models
 core/         config, security, dependencies, rate limiting
 alembic/      migrations, including the RLS policy
-scripts/      role setup, environment preflight, demo data
+scripts/      role setup, environment preflight, demo data, smoke test
 tests/        tenant isolation
 ```
 
