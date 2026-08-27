@@ -54,8 +54,15 @@ def maskele(url) -> str:
     return str(url.set(password="***")) if url.password else str(url)
 
 
-def baglan(url, etiket):
-    """Bağlanmayı dener; başarılıysa (True, sunucu adresi) döner."""
+def baglan(url, etiket, eksikse_sorun_degil: bool = False):
+    """
+    Bağlanmayı dener ve sonucu yazdırır.
+
+    `eksikse_sorun_degil`: veritabanının var olmaması beklenen bir durumsa
+    (üretimde test veritabanı bulunmaz — bulunmaması doğrudur) eksiklik not
+    olarak geçilir. Başka her hata yine hatadır: "yok" ile "erişemiyorum"
+    aynı şey değil, ve ikisini karıştıran bir kontrol aracı yanıltır.
+    """
     try:
         motor = create_engine(url, connect_args={"connect_timeout": 5})
         with motor.connect() as conn:
@@ -65,7 +72,11 @@ def baglan(url, etiket):
         print(f"{TAMAM}{etiket}: bağlandı  (rol={kullanici}, sunucu={adres})")
         return True
     except Exception as hata:
-        print(f"{HATA}{etiket}: {aciklama(hata)}")
+        neden = aciklama(hata)
+        if eksikse_sorun_degil and "does not exist" in neden:
+            print(f"{NOT}{etiket}: veritabanı yok — üretimde beklenen durum")
+            return True
+        print(f"{HATA}{etiket}: {neden}")
         return False
 
 
@@ -209,9 +220,10 @@ def main() -> int:
         else:
             test_url = make_url(url)
             test_url = test_url.set(database=f"{test_url.database}_test")
-        if not baglan(test_url, f"{etiket} rolü / test"):
-            sorun += 1
-            adres_ailesi_karsilastir(test_url.render_as_string(hide_password=False), f"{etiket} rolü / test")
+        if not baglan(test_url, f"{etiket} rolü / test", eksikse_sorun_degil=True):
+            adres_ailesi_karsilastir(
+                test_url.render_as_string(hide_password=False), f"{etiket} rolü / test"
+            )
 
     print("\n=== 6. Aynı değeri okuyan yollar aynı sonucu veriyor mu ===")
     # Uygulama ve testler ayarları farklı yollardan alıyor:

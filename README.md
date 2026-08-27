@@ -120,6 +120,56 @@ every assumption above and tells you which one is wrong.
 
 ---
 
+## Deploying
+
+The order matters, because each step needs different privileges:
+
+```bash
+alembic upgrade head            # schema owner — creates tables and the RLS policy
+python scripts/setup_db_role.py # creates the restricted role the app connects as
+python scripts/seed_demo.py     # optional: the two demo companies
+python scripts/check_db_setup.py   # verify before pointing traffic at it
+```
+
+Environment variables:
+
+| Variable | |
+|---|---|
+| `DATABASE_URL` | the restricted role — what the application uses |
+| `MIGRATION_DATABASE_URL` | the schema-owning role — Alembic only, see below |
+| `SECRET_KEY` | fresh per environment; changing it invalidates issued tokens |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | optional, defaults to 60 |
+| `CORS_ORIGINS` | comma-separated; the frontend's real domain in production |
+
+Start command: `uvicorn main:app --host 0.0.0.0 --port $PORT`
+
+**Do not set `MIGRATION_DATABASE_URL` on the running web service.** Nothing the
+application serves reads it — it exists for Alembic and the setup scripts, which
+run from a deployment machine, not from the container answering requests. Leaving
+it in the service's environment would hand the schema-owner password to the
+process you deliberately stripped of schema privileges, and undo the separation
+in one environment variable.
+
+**On managed PostgreSQL** — Neon, Supabase, RDS — the administrative role you
+are given is usually not a true superuser, and `ALTER ROLE … NOSUPERUSER` is
+refused there. `setup_db_role.py` expects that: a role created by a
+non-superuser cannot hold `SUPERUSER` or `BYPASSRLS` in the first place, so it
+notes the refusal and moves on to what actually matters — verifying that the
+role it produced cannot bypass the policies. It exits non-zero if it can.
+
+Run `check_db_setup.py` against production after every deploy. It is the
+difference between believing the isolation is on and knowing it.
+
+**If you keep a free-tier service warm with an external pinger, point it at `/`
+and not at `/healthz`.** `/healthz` opens a database connection by design —
+that is what makes it a useful health check. Aimed at a scale-to-zero Postgres
+every few minutes, it also stops the database ever going idle, and turns a demo
+nobody is using into a metered one. On Neon's free plan the difference is a
+compute that lasts the month and one that suspends around day sixteen. `/`
+returns a static response and touches nothing.
+
+---
+
 ## Isolation model
 
 **Shared database, shared schema, `tenant_id` column.** Not schema-per-tenant,

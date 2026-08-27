@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse
 import logging
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
+from core.config import settings
 from database import SessionLocal
 from slowapi.middleware import SlowAPIMiddleware
 from core.limiter import limiter
@@ -24,14 +25,9 @@ def custom_rate_limit_handler(request: Request, exc: RateLimitExceeded):
 
 app.add_exception_handler(RateLimitExceeded, custom_rate_limit_handler)
 
-# Prod için daha sıkı CORS kuralları
-origins = [
-    "http://localhost:3000",
-    "http://localhost:5173",
-    "http://127.0.0.1:3000",
-    "http://127.0.0.1:5173",
-    # "https://senin-prod-domainin.com" -> Canlıya çıkarken burayı açacaksın
-]
+# CORS kaynakları ortamdan gelir (CORS_ORIGINS), böylece canlıya çıkarken
+# kod değil yapılandırma değişir. Bkz. core/config.py ve .env.example.
+origins = [k.strip() for k in settings.cors_origins.split(",") if k.strip()]
 
 app.add_middleware(
     CORSMiddleware,

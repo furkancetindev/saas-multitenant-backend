@@ -33,6 +33,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from sqlalchemy import create_engine, text  # noqa: E402
+from sqlalchemy.exc import ProgrammingError  # noqa: E402
 from sqlalchemy.engine import make_url  # noqa: E402
 
 from core.config import settings  # noqa: E402
@@ -102,9 +103,25 @@ def main() -> int:
             )
             print(f"rol '{rol}' oluşturuldu")
 
-        # Superuser ve BYPASSRLS'i her koşuda açıkça kapatıyoruz. Biri elle
-        # yetki yükseltmişse bu script onu geri alır ve haber verir.
-        conn.execute(text(f"ALTER ROLE {rol} NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE"))
+        # Yetkileri açıkça kısmaya çalışıyoruz. Biri elle yükseltmişse geri alınır.
+        #
+        # Ama bu her ortamda mümkün değil: SUPERUSER ve BYPASSRLS özniteliklerini
+        # yalnızca gerçek bir superuser değiştirebilir, ve Neon, Supabase gibi
+        # yönetilen servislerde sana verilen yönetici rolü superuser DEĞİLDİR.
+        # Orada bu ALTER "permission denied to alter role" ile reddedilir.
+        #
+        # Reddedilmesi sorun değil: superuser olmayan bir rol, oluşturduğu role
+        # zaten superuser ya da bypassrls veremez. Yani ayarlayamadığımız yerde
+        # değer baştan doğrudur. Kritik olan aşağıdaki doğrulama — o her ortamda
+        # çalışır ve yanlışsa script hata ile çıkar.
+        for oznitelikler in ("NOSUPERUSER NOBYPASSRLS", "NOCREATEDB NOCREATEROLE"):
+            try:
+                conn.execute(text(f"ALTER ROLE {rol} {oznitelikler}"))
+            except ProgrammingError:
+                print(
+                    f"  not: '{oznitelikler}' ayarlanamadı (yönetici rolü superuser değil). "
+                    "Aşağıdaki doğrulama zaten kontrol ediyor."
+                )
 
         conn.execute(text(f'GRANT CONNECT ON DATABASE "{veritabani}" TO {rol}'))
         conn.execute(text(f"GRANT USAGE ON SCHEMA public TO {rol}"))
@@ -132,9 +149,21 @@ def main() -> int:
             {"rol": rol},
         ).one()
 
-    if any(satir):
-        print(f"UYARI: '{rol}' hâlâ yükseltilmiş yetkiler taşıyor: {satir}", file=sys.stderr)
+    superuser, bypassrls, createdb, createrole = satir
+    if superuser or bypassrls:
+        print(
+            f"DUR: '{rol}' rolü Row-Level Security'yi baypas edebiliyor "
+            f"(superuser={superuser}, bypassrls={bypassrls}).\n"
+            "Bu rolle bağlanan bir uygulama için politikalar hiçbir şey yapmaz. "
+            "Rolü bir superuser ile düzelt ya da yetkisiz yeni bir rol kullan.",
+            file=sys.stderr,
+        )
         return 1
+    if createdb or createrole:
+        print(
+            f"  not: '{rol}' hâlâ createdb={createdb} createrole={createrole} taşıyor. "
+            "İzolasyon için tehlikeli değil, ama gereğinden fazla."
+        )
 
     print(
         f"'{rol}' hazır: superuser değil, bypassrls değil, DDL yetkisi yok.\n"
