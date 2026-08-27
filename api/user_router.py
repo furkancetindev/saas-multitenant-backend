@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
-from core.dependencies import get_db, get_current_user, require_role, get_user_service
+from core.dependencies import get_db, get_tenant_db, get_current_user, require_role, get_user_service
 from schemas.user import UserCreate, UserResponse, UserUpdate, UserPasswordUpdate
 from services.user_service import UserService
 from core.limiter import limiter
@@ -17,7 +17,7 @@ def create_user(
     request: Request,  # slowapi dekoratörünün zorunlu kıldığı parametre
     user: UserCreate,
     current_user: User = Depends(require_role("admin")), # Sadece admin çalışan ekleyebilir
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     try:
         service = UserService(db)
@@ -31,7 +31,7 @@ def get_users(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=100),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_db),
 ):
     service = UserService(db)
     return service.get_users_by_tenant(current_user.tenant_id, skip=skip, limit=limit)

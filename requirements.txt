@@ -21,6 +21,11 @@ alembic==1.19.1
 pydantic[email]==2.13.4         # [email] pulls email-validator, used by EmailStr
 pydantic-settings==2.15.0
 
+# Arrives with pydantic-settings, but tests/conftest.py and scripts/ import it
+# directly to read .env — on purpose, so that everything reading .env uses the
+# one parser. Listed explicitly because we depend on it by name, not by luck.
+python-dotenv==1.2.3
+
 # --- Auth ------------------------------------------------------------------
 python-jose[cryptography]==3.5.0
 passlib[bcrypt]==1.7.4

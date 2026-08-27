@@ -1,138 +1,112 @@
 # DURUM — saas_backend
 
 Son güncelleme: **26 Ağustos 2026**
-Bu oturumda tamamlanan: **Faz 0 + Faz 1 + Faz 2**
+Tamamlanan: **Faz 0 · Faz 1 · Faz 2 · Faz 3**
 
 ---
 
-## Bitti
+## Faz 3 — Row-Level Security (bu oturumda bitti)
 
-### Faz 0 — Git hijyeni
-- `.gitignore`'a `.idea/` ve `.pytest_cache/` eklendi.
-- `SECRET_KEY` **yenilendi** (26 Ağu, PowerShell ile, 64 karakter). Eski token'lar
-  geçersiz — frontend'de yeniden giriş gerekir.
-- **Sende kalan:** `git init` + ilk commit + `git log --all --full-history -- .env`
-  doğrulaması. Komut bloğu en altta.
+### Alınan iki karar
+1. **İki veritabanı rolü.** Uygulama `saas_app` ile bağlanır: superuser değil,
+   tabloların sahibi değil, DDL yetkisi yok. Migration'lar `postgres` ile koşar.
+2. **RLS kapsamı: sadece `tasks`.** `users` elle filtrede kalıyor — sebebi aşağıda.
 
-### Faz 1 — Dört düzeltme
-| Kod | Konu | Durum |
+### Neden ayrı rol zorunluydu — ölçüm
+
+| Kim bağlanıyor | `app.tenant_id` | Sonuç |
 |---|---|---|
-| A1 | Üç ayrı `Limiter` nesnesi | Kapandı — tek merkez `core/limiter.py` |
-| A3 | `get_all_tenants()` filtresiz listeleme | Kapandı — silindi, gerekçe docstring'e yazıldı |
-| A4 | `change_password` kiracı filtresiz | Kapandı — `tenant_id` imzaya ve filtreye girdi |
-| A5 | Rate limit IP bazlı | Kapandı — kimlik bazlı `key_func` + iki yazma endpoint'inde limit |
+| `postgres` (superuser + sahip), `FORCE` açık | Kuzey | **iki kiracının satırı da geldi** |
+| `saas_app` (superuser değil, sahip değil) | Kuzey | sadece Kuzey'in satırı |
+| `saas_app` | set edilmedi | **0 satır** (fail-closed) |
+| `saas_app`, başka kiracı adına INSERT | Kuzey | politika reddetti |
 
-**A1 hakkında düzeltme:** master prompt "limitler beklendiği gibi uygulanmıyor" diyordu;
-ölçüm bunu doğrulamadı. Düzeltme öncesi kodda `/login` 5 istekten sonra 429 veriyordu.
-slowapi'de `@limiter.limit` dekoratörü limiti kendi Limiter nesnesi üzerinden uyguluyor;
-middleware'in `app.state.limiter`'ı bu rotaları hiç tanımıyordu. A1 bir bug düzeltmesi
-değil, **A5'in ön koşulu**: yerel limiter'lar `key_func` değişikliğinden etkilenmeyecekti.
+Master prompt "sahip olacaksa `FORCE` zorunlu" diyordu. Ölçüm daha sert: superuser'ı
+`FORCE` de durdurmuyor. `postgres` ile bağlanmaya devam etseydik politika yazılır,
+testler yeşil kalır ve README yalan söylerdi.
 
-### Faz 1 sonrası alınan dört karar
-1. Demo e-postaları `@kuzey.example.com` / `@ayyapi.example.com` (RFC 2606).
-   `.test` uzantısı `email-validator` tarafından reddediliyordu — kayıt 422 dönüyordu.
-2. `requirements.txt`'te `bcrypt==4.0.1` pinlendi. `passlib 1.7.4` + `bcrypt 5.x`
-   temiz venv'de her şifre işleminde patlıyor.
-3. A5 gerçekten devreye alındı: `POST /tasks/` ve `POST /users/` 60/dakika limitli.
-4. `is_active` NULL tuzağı yeni migration ile kapatıldı (`8676506d8095`).
-
-### Faz 2 — Testler
-- `GET /tasks/{task_id}` eklendi (repository → service → router), çapraz kiracıda 404.
-- `tests/conftest.py`: ayrı test veritabanı, her koşuda `DROP SCHEMA` + **Alembic ile**
-  şema kurulumu. `create_all()` değil — RLS politikaları migration'da yaşayacak,
-  modelden kurulan şema onları sessizce atlar ve izolasyon kanıtı boşa çıkardı.
-- `tests/test_tenant_isolation.py`: 4 test (spec'te 3 vardı; dördüncüsü hata
-  sözleşmesini eşitlik olarak ifade ediyor — başka kiracının kaydı ile hiç var olmamış
-  kayıt aynı gövdeyi döndürmeli).
-
----
-
-## Doğrulama — bulut ortamında gerçek PostgreSQL 16
-
-Üç Python sürümünde, `requirements.txt`'ten temiz kurulumla:
-
-| Python | Sonuç |
-|---|---|
-| 3.11.15 | `4 passed, 2 warnings` |
-| 3.13.13 | `4 passed, 1 warning` |
-| **3.14.4** (Furkan'ın venv'i) | `4 passed, 5 warnings` |
-
-`bcrypt==4.0.1` üçünde de kuruluyor: paket `cp36-abi3` etiketli wheel yayınlıyor,
-yani 3.6+ her CPython'da çalışıyor — 2022'den kalma olması kurulumu engellemiyor.
-
-> Not: 3.14.0**rc2** üzerinde `import fastapi` pydantic içinde `AssertionError` ile
-> patlıyordu. Final 3.14.4'te sorun yok — o bulgu release candidate'a özgüymüş.
-
-Ayrıca ölçülenler:
-
-- **Testlerin dişi var.** `task_repository.py`'deki kiracı filtrelerini geçici olarak
-  kaldırdım → `2 failed, 2 passed`. Ay Yapı, Kuzey'in görevini listede gördü ve
-  GET ile 200 aldı. Faz 3'ün kabul kanıtı aynı deney: RLS eklenince bu deney
-  **4 passed** vermeli. Şu anki hâli "önce" fotoğrafı.
-- **A5 davranışsal olarak doğrulandı.** Kuzey `POST /tasks/`'a 60 istek geçirdi,
-  61.'de 429 aldı. Tam o sırada Ay aynı endpoint'e vurdu → **200**. Kovalar ayrı.
-- **`is_active` düzeltmesi doğrulandı.** Migration öncesi düz SQL INSERT → NULL →
-  kullanıcı kalıcı 403. Migration sonrası aynı INSERT → `true`. Downgrade/upgrade
-  gidiş-dönüşü temiz.
-- `alembic upgrade head` üç migration'ı da temiz geçiyor.
-
----
-
-## Bilinen sınırlar / açık konular
-
-1. **`git init` + ilk commit + `SECRET_KEY` rotasyonu** — sende.
-   `saas_backend`'de `.git` yok, yani `.env` bu repo geçmişinde olamaz. Ama
-   `C:\Users\furkan\.git` mevcut; ev dizini bir depo ise Desktop altındaki her şey
-   onun kapsamında olabilir. Önce bunu kontrol et.
-2. **`TaskUpdateDetail` içinde `assigned_to` yok.** Bu yüzden `update_task_detail`
-   içindeki `_validate_assignee` dalı ölü kod. Çapraz kiracı atama koruması sadece
-   `POST /tasks/` yolunda sınanabiliyor — testler de öyle yapıyor.
-3. **pytest uyarıları — kendi payımız temizlendi.** `core/config.py`,
-   `schemas/user.py` ve `schemas/tenant.py` pydantic v2 `ConfigDict`/`SettingsConfigDict`
-   kullanacak şekilde güncellendi (Faz 4'ten öne çekildi). Kalan uyarılar kütüphanelerden:
-   starlette'in httpx uyarısı ve Python 3.14'te slowapi'nin `asyncio.iscoroutinefunction`
-   uyarısı (dört limitli endpoint için dört kez). Bunlar bizim kodumuz değil, gizlemiyoruz.
-4. **`gen_random_uuid()` PostgreSQL 13+ gerektirir.** Daha eskisinde `pgcrypto`
-   eklentisi lazım. README'ye yazılacak.
-5. Token'da `tenant_id` yok, `jti`/iptal yok, refresh token yok. `users.email`
-   global UNIQUE. Hepsi README "bilinen sınırlar" bölümüne.
-
----
-
-## Sıradaki adım — Faz 3 (Row-Level Security)
-
-Master prompt'taki dört tuzak geçerli: `FORCE` şart · `SET` değil `set_config(..., true)` ·
-`get_db`'de kiracı `get_current_user`'dan sonra biliniyor · `/login` ve `/tenants/register`
-kiracısız çalışıyor.
-
-Kabul kanıtı hazır: filtre kaldırma deneyi şu an **2 failed** veriyor, RLS sonrası
-**4 passed** vermeli.
-
-### Faz 0'ı kapatmak için elle çalıştırılacak komutlar
-```powershell
-cd C:\Users\furkan\Desktop\saas_backend
-
-# 0) SECRET_KEY'i yenile (değer hiçbir yere gitmez, sadece .env'e yazılır)
-python -c "import secrets,pathlib,re; p=pathlib.Path('.env'); t=p.read_text(encoding='utf-8'); p.write_text(re.sub(r'^SECRET_KEY=.*$','SECRET_KEY='+secrets.token_hex(32),t,flags=re.M),encoding='utf-8'); print('yenilendi')"
-
-# 1) Ev dizini bir git deposu mu? "true" derse .env oradaki geçmişte olabilir.
-git -C C:\Users\furkan rev-parse --is-inside-work-tree
-
-# 2) Repoyu başlat
-git init
-git add .
-git status --short          # .env burada GÖRÜNMEMELİ
-git commit -m "Initial commit: multi-tenant SaaS backend (FastAPI + PostgreSQL)"
-
-# 3) Çıktı BOŞ olmalı
-git log --all --full-history -- .env
+### Eklenen / değişen
+```
+alembic/versions/3831f9c1e1fb_enable_rls_on_tasks.py   ENABLE + FORCE + USING + WITH CHECK
+scripts/setup_db_role.py                               kısıtlı rolü kurar, yetki verir, doğrular
+.env.example                                           iki URL, neden iki tane olduğu yazılı
+core/config.py                                         migration_database_url eklendi
+database.py                                            after_begin dinleyicisi
+core/dependencies.py                                   get_tenant_db
+alembic/env.py                                         migration URL'ini tercih eder
+api/user_router.py, api/tenant_router.py               kiracı bağlamlı oturuma geçti
+tests/conftest.py                                      admin + app rolü ayrı, rol kurulumu otomatik
+tests/test_tenant_isolation.py                         4 → 6 test
 ```
 
-### Testleri kendi makinende koşturmak
+### Yol boyunca çıkan gerçek bir hata
+İlk politika `current_setting('app.tenant_id', true)::uuid` kullanıyordu.
+`set_config(..., true)` bir kez çalıştırılmış bir **bağlantıda** transaction bitince
+değer NULL'a değil **boş dizgeye** dönüyor ve `''::uuid` hata fırlatıyor. Havuzlanmış
+bir uygulamada bu, her bağlantının ikinci isteğinden sonra başına gelir; fail-closed
+"0 satır" yerine "500" olurdu. Politika `NULLIF(current_setting(...), '')` ile düzeltildi.
+Migration'ın docstring'inde yazılı.
+
+---
+
+## Doğrulama
+
+`pytest`: **6 passed** — Python 3.11 / 3.13 / 3.14.4, PostgreSQL 16.
+
+Üç mutasyon deneyi (testlerin bir şey kanıtladığının kanıtı):
+
+| Deney | Faz 2'de | Faz 3'te |
+|---|---|---|
+| `task_repository`'deki elle `tenant_id` filtrelerini kaldır | `2 failed` | **`6 passed`** — veritabanı tek başına koruyor |
+| `set_config(..., true)` → `false` (yani `SET` davranışı) | — | `2 failed` — havuz sızıntısı yakalanıyor |
+| Uygulama superuser ile bağlanırsa | — | `test_row_level_security_is_actually_enforced` kırmızı |
+
+Canlı uygulama da RLS altında uçtan uca çalışıyor: 17 adımlık akış (iki şirket kaydı →
+giriş → çalışan → görev → çapraz erişim denemeleri → şifre değişimi) tamamı geçti,
+`/healthz` ok.
+
+---
+
+## Bilinen sınırlar
+
+1. **RLS yalnızca `tasks` tablosunda.** `users` elle filtrede. Sebep: `/login`
+   e-postayı kiracılar arası aramak zorunda ve `get_current_user` kiracıyı henüz
+   bilmeden kullanıcıyı çekiyor. İkisi de RLS'i deler; çözümü her istekte ikinci bir
+   ayrıcalıklı oturum açmak — havuz baskısını iki katına çıkarır. README'ye böyle yazılacak.
+2. **`git init` yapıldı, ilk commit atıldı** (34 dosya, `.env` geçmişte yok).
+   Ama **`C:\Users\furkan` bir git deposu** — `rev-parse --is-inside-work-tree` `true` döndü.
+   Desktop altındaki her şey onun kapsamında olabilir. Kontrol edilmeli:
+   ```powershell
+   git -C C:\Users\furkan remote -v
+   git -C C:\Users\furkan ls-files --error-unmatch Desktop/saas_backend/.env
+   ```
+3. `TaskUpdateDetail` içinde `assigned_to` yok → `update_task_detail`'deki
+   `_validate_assignee` dalı ölü kod.
+4. Token'da `tenant_id` yok, `jti`/iptal yok, refresh token yok. `users.email` global UNIQUE.
+5. `gen_random_uuid()` PostgreSQL 13+ ister.
+6. `pytest` çıktısında kalan uyarılar kütüphanelerden (starlette httpx, slowapi
+   `asyncio.iscoroutinefunction`). Kendi kodumuzdakiler temizlendi.
+
+---
+
+## Sıradaki adım — Faz 4 (paketleme)
+
+`requirements.txt` ve `.env.example` hazır. Kalanlar:
+
+1. `scripts/seed_demo.py` — iki kiracı, gözle ayırt edilir veri.
+   **Dikkat:** RLS artık aktif. Seed script'i `tasks`'e yazacaksa ya her kiracı için
+   `app.tenant_id` set etmeli ya da `MIGRATION_DATABASE_URL` ile bağlanmalı.
+2. `README.md` — şartname. "Kendin dene" bölümü + izolasyon modeli + yukarıdaki
+   mutasyon tablosu + bilinen sınırlar.
+
+### Faz 3'ü kendi makinende kurmak
 ```powershell
-createdb saas_project_test          # ya da pgAdmin'den oluştur
-pip install -r requirements.txt
+# .env'e ikinci URL'i ekle ve DATABASE_URL'i kısıtlı role çevir (bkz. .env.example)
+#   DATABASE_URL=postgresql://saas_app:<parola-sec>@localhost:5432/saas_project
+#   MIGRATION_DATABASE_URL=postgresql://postgres:12345@localhost:5432/saas_project
+
+.\.venv\Scripts\Activate.ps1
+alembic upgrade head
+python scripts\setup_db_role.py
 pytest -v
 ```
-`TEST_DATABASE_URL` verilmezse `DATABASE_URL`'in sonuna `_test` eklenir.
-İkisi aynı çıkarsa suite çalışmayı reddeder — her koşu şemayı siliyor.

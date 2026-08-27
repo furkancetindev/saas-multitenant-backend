@@ -20,8 +20,18 @@ from models.domain import Tenant, User, Task
 # access to the values within the .ini file in use.
 config = context.config
 
-# 4) alembic.ini içindeki sqlalchemy.url ayarını ezerek bizim .env'deki URL'i kullanmasını sağlıyoruz
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# 4) alembic.ini içindeki sqlalchemy.url ayarını ezerek .env'deki URL'i kullanıyoruz.
+#
+#    Migration'lar DDL çalıştırır (CREATE TABLE, ALTER TABLE, CREATE POLICY),
+#    uygulamanın bağlandığı kısıtlı rol ise bunu yapamaz — bilerek yapamaz.
+#    Bu yüzden burada migration_database_url tercih edilir; verilmemişse
+#    database_url'e düşülür.
+#
+#    .replace("%", "%%") gerekli: set_main_option değeri ConfigParser'a verir ve
+#    orada "%" biçim karakteridir. Parolasında "%" geçen biri aksi hâlde
+#    anlaşılmaz bir InterpolationSyntaxError alır.
+db_url = settings.migration_database_url or settings.database_url
+config.set_main_option("sqlalchemy.url", db_url.replace("%", "%%"))
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.

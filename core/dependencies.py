@@ -1,5 +1,6 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from jose import JWTError, jwt
 
@@ -70,13 +71,49 @@ def require_role(*allowed_roles: str):
     return role_checker
 
 
-def get_task_service(db: Session = Depends(get_db)) -> TaskService:
+# 3. Kiracı Bağlamı Kurulmuş Oturum
+def get_tenant_db(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Session:
+    """
+    Kiracıyı veritabanına bildirir; PostgreSQL Row-Level Security politikaları
+    bu ayarı okur (bkz. alembic/versions/*_enable_rls_on_tasks.py).
+
+    Sıralama tesadüf değil: token yalnızca `sub` (kullanıcı kimliği) taşır,
+    kiracı taşımaz. Kiracı ancak `get_current_user` kullanıcıyı çözdükten
+    sonra bilinir — bu yüzden ayar burada, o bağımlılıktan SONRA yapılır.
+
+    İki yere yazıyoruz, ikisi de gerekli:
+      * `db.info` — `after_begin` dinleyicisi (database.py) bunu okuyup
+        bundan sonra açılan HER transaction'da ayarı tekrar uygular.
+        Repository'ler her yazmadan sonra commit ediyor; commit mevcut
+        transaction'ı kapatır ve ayarı da beraberinde götürür.
+      * Halihazırda açık olan transaction — `get_current_user` kullanıcıyı
+        okurken bir transaction başlatmış oldu; `after_begin` onun için çoktan
+        geçti, o yüzden bu birini elle set ediyoruz.
+
+    Kimlik doğrulaması gereken tüm servisler bu oturumu kullanır. Bugün yalnızca
+    `tasks` tablosunda politika var, ama kural "kimlik doğrulanmış her istek
+    kiracısını veritabanına söyler" olarak duruyor — bir sonraki tabloya politika
+    eklendiğinde kimsenin bir şeyi hatırlaması gerekmesin diye.
+    """
+    tenant_id = str(current_user.tenant_id)
+    db.info["tenant_id"] = tenant_id
+    db.execute(
+        text("SELECT set_config('app.tenant_id', :tenant_id, true)"),
+        {"tenant_id": tenant_id},
+    )
+    return db
+
+
+def get_task_service(db: Session = Depends(get_tenant_db)) -> TaskService:
     return TaskService(db)
 
 
-def get_tenant_service(db: Session = Depends(get_db)) -> TenantService:
+def get_tenant_service(db: Session = Depends(get_tenant_db)) -> TenantService:
     return TenantService(db)
 
 
-def get_user_service(db: Session = Depends(get_db)) -> UserService:
+def get_user_service(db: Session = Depends(get_tenant_db)) -> UserService:
     return UserService(db)

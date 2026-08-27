@@ -52,12 +52,23 @@ Yeni kod da bu katmanlara uyacak. Router'da doğrudan sorgu yazma; repository'yi
 - Kiracı, JWT'deki `sub` (user id) → `get_current_user` → `user.tenant_id` zincirinden gelir.
   Token'da `tenant_id` **yok**.
 - Her repository sorgusunda `tenant_id` filtresi **zorunlu**. İstisna kabul edilmez.
-- Ek olarak PostgreSQL Row-Level Security. Kritik detaylar:
-  - `FORCE ROW LEVEL SECURITY` şart — sahibi/superuser aksi hâlde bypass eder.
-  - Bağlantı havuzlu: **`SET LOCAL` / `set_config(..., true)` kullan, `SET` kullanma.**
-    `SET` bir sonraki isteğe sızar ve çözmeye çalıştığın sızıntıyı yaratır.
-  - `/login` ve `/tenants/register` kiracı bilinmeden çalışır; RLS kapsamına alınırken
-    ayrı bir DB rolü gerekir.
+- Ek olarak PostgreSQL Row-Level Security — **uygulanmış durumda, `tasks` tablosunda.**
+  Politika: `alembic/versions/3831f9c1e1fb_enable_rls_on_tasks.py`. Kritik detaylar:
+  - **Uygulama superuser ile bağlanmaz.** Ölçüldü: superuser RLS'i `FORCE` açıkken
+    bile baypas eder. `DATABASE_URL` → `saas_app` (superuser değil, sahip değil,
+    DDL yok). Migration'lar `MIGRATION_DATABASE_URL` → `postgres` ile koşar.
+    Rolü `scripts/setup_db_role.py` kurar. Bu ayrımı bozma.
+  - `FORCE ROW LEVEL SECURITY` yine de açık — savunma derinliği.
+  - Bağlantı havuzlu: **`set_config(..., true)` kullan, `SET` kullanma.** `SET` bir
+    sonraki isteğe sızar. `database.py`'deki `after_begin` dinleyicisi ayarı her yeni
+    transaction'da tekrar uygular (commit ayarı da götürür).
+  - **`NULLIF(current_setting('app.tenant_id', true), '')`** — `NULLIF` şart.
+    `set_config(..., true)` kullanılmış bir bağlantıda transaction bitince değer
+    NULL'a değil boş dizgeye döner; `''::uuid` hata fırlatır. NULLIF olmadan
+    fail-closed "0 satır" değil "500" olur.
+  - `/login` ve `/tenants/register` kiracı bilinmeden çalışır ve `get_current_user`
+    kiracıyı henüz bilmeden kullanıcıyı çeker. Bu yüzden `users` tablosuna RLS
+    uygulanmadı — elle filtrede kalıyor, README'de bilinen sınır olarak yazılı.
 - **Hata sözleşmesi:** çapraz kiracı erişiminde daima `404`, asla `403`.
   Kaydın varlığını bile sızdırmıyoruz.
 
@@ -131,4 +142,9 @@ README, testler ve commit mesajları **İngilizce** — hedef kitle yabancı.
 
 `docs/DURUM.md` dosyasına bak. Yoksa proje henüz Faz 0'da demektir.
 
-26 Ağu 2026 itibarıyla: Faz 0 (git kısmı hariç), Faz 1 ve Faz 2 bitti. Sırada Faz 3 (RLS).
+26 Ağu 2026 itibarıyla: Faz 0, 1, 2 ve 3 bitti. `pytest` → 6 passed. Sırada Faz 4 (paketleme).
+
+**Testlerin dişi olduğu üç mutasyonla ölçüldü** — README'ye bu tablo girecek:
+elle `tenant_id` filtrelerini kaldır → hâlâ 6 passed (RLS koruyor) ·
+`set_config(..., true)` → `false` yap → 2 failed · uygulama superuser ile bağlansın →
+`test_row_level_security_is_actually_enforced` kırmızı.
