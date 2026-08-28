@@ -48,7 +48,10 @@ api_v1.include_router(auth_router.router)
 # V1 router'ı ana uygulamaya dahil et
 app.include_router(api_v1)
 
-@app.get("/")
+# GET ve HEAD birlikte: FastAPI GET rotalarına HEAD eklemiyor, ve bu uç
+# ücretsiz katmanı uyanık tutan pingin hedefi. Ping aracı HEAD gönderirse
+# 405 alır — istek yine sayılır ama bazı izleme servisleri bunu arıza sayar.
+@app.api_route("/", methods=["GET", "HEAD"])
 def read_root():
     return {
         "mesaj": "SaaS Backend API Başarıyla Çalışıyor!",

@@ -69,8 +69,9 @@ somebody else — an existence oracle for every ID on the platform. The response
 Ay Yapı gets for Kuzey's task is byte-identical to the response for an ID that
 was never issued, and there is a test asserting exactly that equality.
 
-Or skip the API: log in to the demo accounts and look at the two dashboards
-side by side.
+Or skip curl entirely: open [`/docs`](https://saas-multitenant-backend.onrender.com/docs), press **Authorize**, sign in
+as `admin@kuzey.example.com`, and request the task ID above — then authorize again
+as `admin@ayyapi.example.com` and request the same one.
 
 | Account | Company | Role |
 |---|---|---|
@@ -80,8 +81,13 @@ side by side.
 
 Password for all three: `Parola123`
 
-<!-- FAZ 5: canlı demo yayına alındığında bu satırı gerçek URL ile değiştir -->
-> **Live demo:** _not deployed yet — run it locally with the quick start below._
+> **Live demo:** [saas-multitenant-backend.onrender.com/docs](https://saas-multitenant-backend.onrender.com/docs)
+>
+> On a free instance that sleeps after fifteen minutes idle, so the first request
+> can take about a minute. Everything below is real: the demo runs against a
+> managed PostgreSQL 18 with the same policies, and
+> `python scripts/smoke_test.py https://saas-multitenant-backend.onrender.com`
+> replays this whole section against it and prints what it found.
 
 ---
 
@@ -94,7 +100,8 @@ Neon. The migrations, the policy and the `set_config` mechanism needed no change
 between the two.
 
 ```bash
-git clone <repo> && cd saas_backend
+git clone https://github.com/furkancetindev/saas-multitenant-backend.git
+cd saas-multitenant-backend
 python -m venv .venv && source .venv/bin/activate    # Windows: .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 

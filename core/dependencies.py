@@ -24,7 +24,11 @@ def get_db():
 
 
 # 2. Kimlik Doğrulama Ayarları
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+# tokenUrl sunucu köküne göre çözülür, router'ın prefix'ine göre değil.
+# "login" yazılırsa /docs'taki Authorize düğmesi /login'e gider ve 404 alır;
+# gerçek uç /api/v1/login. Canlı demoda tek tıklanabilir arayüz /docs olduğu
+# için bu satır kozmetik değil — ziyaretçinin giriş yapabilmesi buna bağlı.
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/login")
 
 
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:
