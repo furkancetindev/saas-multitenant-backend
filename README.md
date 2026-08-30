@@ -14,6 +14,12 @@ If you have twenty seconds, read
 [`tests/test_tenant_isolation.py`](tests/test_tenant_isolation.py). If you have
 sixty, run the two commands under *Try it yourself*.
 
+**Live:** https://saas-multitenant-backend.onrender.com/docs — or don't take my word for any of this:
+
+```bash
+python scripts/smoke_test.py https://saas-multitenant-backend.onrender.com
+```
+
 ---
 
 ## The claim, and how to check it
@@ -39,6 +45,8 @@ experiment rather than a promise.
 ---
 
 ## Try it yourself
+
+Swap `http://localhost:8000` for `https://saas-multitenant-backend.onrender.com` to run these against the live demo without cloning anything.
 
 Two companies exist in the demo data: **Kuzey Lojistik** (logistics) and
 **Ay Yapı** (construction). Same tables, same rows, different tenants.
